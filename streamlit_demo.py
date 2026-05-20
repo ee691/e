@@ -1,7 +1,6 @@
 import streamlit as st
 import base64
 import io
-from reportlab.lib.pagesizes import A4
 from datetime import datetime
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
@@ -21,7 +20,7 @@ bg2 = get_base64("1.1.jpeg")
 bg3 = get_base64("1.2.png")
 bg4 = get_base64("1.3.png")
 
-# ===================== 工具函数（完全不变） =====================
+# ===================== 工具函数（去掉了PDF导出） =====================
 def get_read_time(text):
     if not text:
         return "⏱ 阅读时长：0 分钟"
@@ -53,25 +52,7 @@ def speak_text(text, lang="zh-CN"):
 def stop_speak():
     st.components.v1.html("<script>window.speechSynthesis.cancel();</script>", height=0)
 
-def export_pdf(title, content):
-    buffer = io.BytesIO()
-    c = canvas.Canvas(buffer, pagesize=A4)
-    width, height = A4
-    c.setFont("Helvetica-Bold", 16)
-    c.drawString(50, height - 50, title)
-    c.setFont("Helvetica", 12)
-    y_pos = height - 80
-    for line in content.split("\n"):
-        if y_pos < 50:
-            c.showPage()
-            y_pos = height - 50
-        c.drawString(50, y_pos, line)
-        y_pos -= 20
-    c.save()
-    buffer.seek(0)
-    return buffer
-
-# ===================== 初始化会话（完全不变） =====================
+# ===================== 初始化会话 =====================
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
 if "username" not in st.session_state:
@@ -95,7 +76,7 @@ if "selected_styles" not in st.session_state:
 if "selected_emotions" not in st.session_state:
     st.session_state.selected_emotions = ["治愈温柔"]
 
-# ===================== 全局样式（完全不变） =====================
+# ===================== 全局样式 =====================
 def set_style():
     font_map = {"小号":"14px","中号":"17px","大号":"20px"}
     fs = font_map[st.session_state.font_size]
@@ -130,7 +111,7 @@ def set_style():
     </style>
     """, unsafe_allow_html=True)
 
-# ===================== 【关键修改】单体版：直接本地生成故事，不调用后端 =====================
+# ===================== 单体版生成故事 =====================
 def generate_story(keyword, style, emotion, word_num, mood, language):
     llm = ChatOpenAI(
         model="deepseek-chat",
@@ -151,7 +132,7 @@ def generate_story(keyword, style, emotion, word_num, mood, language):
         speak_text(result.content)
     st.rerun()
 
-# ===================== 下面所有界面代码完全不变，不用动 =====================
+# ===================== 创作页面 =====================
 def create_story_page():
     st.title("📖 AI 故事创作平台")
     st.markdown("<p style='color:#666;margin-bottom:20px;'>✨ 一键生成治愈、励志、古风、科幻等精美短篇故事</p>", unsafe_allow_html=True)
@@ -255,16 +236,15 @@ def create_story_page():
         st.success(f"✅ 生成完成｜{get_read_time(s['content'])}｜字数：{get_word_count(s['content'])}")
         st.markdown(f"<div class='story-card'>{s['content']}</div>", unsafe_allow_html=True)
 
-        c1,c2,c3,c4,c5,c6 = st.columns(6)
+        c1,c2,c3,c4,c5 = st.columns(5)
         with c1: st.download_button("📥 TXT", s["content"], f"{s['keyword']}.txt")
-        with c2: st.download_button("📄 PDF", export_pdf(s['keyword'], s['content']), f"{s['keyword']}.pdf")
-        with c3:
+        with c2:
             if st.button("🔊 朗读"): speak_text(s["content"])
-        with c4:
+        with c3:
             if st.button("⏹️ 停止"): stop_speak()
-        with c5:
+        with c4:
             if st.button("✏️ 编辑"): st.session_state.editing_story = True; st.rerun()
-        with c6:
+        with c5:
             if st.button("🔄 清空"): st.session_state.current_story = None; st.rerun()
 
 def sidebar_setting():
