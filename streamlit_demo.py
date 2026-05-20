@@ -2,7 +2,7 @@ import streamlit as st
 import base64
 import io
 from datetime import datetime
-from langchain_openai import ChatOpenAI
+from langchain.chat_models import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
 from dotenv import load_dotenv
 import os
