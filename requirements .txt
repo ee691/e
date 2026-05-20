@@ -1,0 +1,13 @@
+langchain==1.2.15
+langchain-core==1.3.2
+langchain-community==0.4.1
+langchain-openai==1.2.1
+langchain-text-splitters==1.1.2
+langgraph==1.1.10
+langsmith==0.7.37
+dashscope==1.25.17
+streamlit>=1.28.0
+chainlit==2.11.1
+PyPDF2==3.0.1
+chromadb==1.5.8
+ddgs==9.14.1
