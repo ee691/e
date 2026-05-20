@@ -49,13 +49,8 @@ def speak_text(text, lang="zh-CN"):
 def stop_speak():
     st.components.v1.html("<script>window.speechSynthesis.cancel();</script>", height=0)
 
-# 会话状态
 if "current_story" not in st.session_state:
     st.session_state.current_story = None
-if "lang_select" not in st.session_state:
-    st.session_state.lang_select = "中文"
-if "font_size" not in st.session_state:
-    st.session_state.font_size = "中号"
 if "theme_mode" not in st.session_state:
     st.session_state.theme_mode = "默认白天"
 if "auto_speak" not in st.session_state:
@@ -67,7 +62,7 @@ if "emotion_check" not in st.session_state:
 
 def set_style():
     font_map = {"小号":"14px","中号":"17px","大号":"20px"}
-    fs = font_map[st.session_state.font_size]
+    fs = font_map["中号"]
     theme = st.session_state.theme_mode
     if theme == "默认白天":
         bg = f"background-image: url(data:image/jpg;base64,{bg1}) !important; background-size:cover !important; background-position:center !important; background-attachment:fixed !important;"
@@ -97,14 +92,14 @@ def set_style():
     </style>
     """, unsafe_allow_html=True)
 
-def generate_story(keyword, style, emotion, word_num, mood, language):
+def generate_story(keyword, style, emotion, word_num, mood):
     llm = ChatOpenAI(
         model="deepseek-chat",
         api_key=os.getenv("DEEPSEEK_API_KEY"),
         base_url=os.getenv("DEEPSEEK_BASE_URL")
     )
     prompt = ChatPromptTemplate.from_messages([
-        ("system", f"你是专业儿童故事生成器，风格：{style}，情绪：{emotion}，心情：{mood}，语言：{language}，字数控制在{word_num}字左右"),
+        ("system", f"你是专业儿童故事生成器，风格：{style}，情绪：{emotion}，心情：{mood}，字数控制在{word_num}字左右"),
         ("user", "主题：{keyword}")
     ])
     chain = prompt | llm
@@ -178,17 +173,17 @@ def create_story_page():
     col1, col2, col3 = st.columns(3)
     with col1:
         if st.button("✨ 开始创作") and keyword:
-            generate_story(keyword, style_final, emotion_final, custom_num, mood, st.session_state.lang_select)
+            generate_story(keyword, style_final, emotion_final, custom_num, mood)
     with col2:
         if st.button("🔁 重新生成") and keyword:
-            generate_story(keyword, style_final, emotion_final, custom_num, mood, st.session_state.lang_select)
+            generate_story(keyword, style_final, emotion_final, custom_num, mood)
     with col3:
         if st.button("🎲 随机故事"):
             import random
             rand_key = random.choice(["森林冒险","校园青春","追梦少年","古风江湖","太空探索"])
             rand_style = random.choice(style_options)
             rand_emo = random.choice(emotion_options)
-            generate_story(rand_key, rand_style, rand_emo, 350, mood, st.session_state.lang_select)
+            generate_story(rand_key, rand_style, rand_emo, 350, mood)
 
     if st.session_state.current_story:
         s = st.session_state.current_story
@@ -212,8 +207,6 @@ def sidebar_setting():
         if selected_theme != st.session_state.theme_mode:
             st.session_state.theme_mode = selected_theme
             st.rerun()
-        st.session_state.lang_select = st.radio("🌐 故事语言", ["中文", "英文", "中英双语"])
-        st.session_state.font_size = st.radio("🔤 字体大小", ["小号","中号","大号"], index=["小号","中号","大号"].index(st.session_state.font_size))
         st.session_state.auto_speak = st.checkbox("🔊 生成后自动朗读", value=st.session_state.auto_speak)
 
 def main():
