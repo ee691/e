@@ -1,14 +1,22 @@
+# 强制安装依赖，解决云端无法读取requirements.txt的问题
+import subprocess
+import sys
+subprocess.check_call([sys.executable, "-m", "pip", "install", "langchain", "streamlit", "python-dotenv"])
+
 import streamlit as st
 import base64
-import io
-from datetime import datetime
-from langchain.chat_models import ChatOpenAI
-from langchain_core.prompts import ChatPromptTemplate
-from dotenv import load_dotenv
 import os
+from dotenv import load_dotenv
+# 兼容双版本导入
+try:
+    from langchain_openai import ChatOpenAI
+except ImportError:
+    from langchain.chat_models import ChatOpenAI
+from langchain_core.prompts import ChatPromptTemplate
 
 load_dotenv()
 
+# ===================== 图片处理 =====================
 def get_base64(file):
     with open(file, "rb") as f:
         return base64.b64encode(f.read()).decode()
@@ -18,6 +26,7 @@ bg2 = get_base64("1.1.jpeg")
 bg3 = get_base64("1.2.png")
 bg4 = get_base64("1.3.png")
 
+# ===================== 工具函数 =====================
 def get_read_time(text):
     if not text:
         return "⏱ 阅读时长：0 分钟"
@@ -49,6 +58,7 @@ def speak_text(text, lang="zh-CN"):
 def stop_speak():
     st.components.v1.html("<script>window.speechSynthesis.cancel();</script>", height=0)
 
+# ===================== 会话状态 =====================
 if "current_story" not in st.session_state:
     st.session_state.current_story = None
 if "theme_mode" not in st.session_state:
@@ -60,6 +70,7 @@ if "style_check" not in st.session_state:
 if "emotion_check" not in st.session_state:
     st.session_state.emotion_check = {"治愈温柔":True,"欢乐轻松":False,"伤感文艺":False,"冒险刺激":False,"悬疑神秘":False}
 
+# ===================== 页面样式 =====================
 def set_style():
     font_map = {"小号":"14px","中号":"17px","大号":"20px"}
     fs = font_map["中号"]
@@ -92,11 +103,12 @@ def set_style():
     </style>
     """, unsafe_allow_html=True)
 
+# ===================== 生成故事 =====================
 def generate_story(keyword, style, emotion, word_num, mood):
     llm = ChatOpenAI(
-        model="deepseek-chat",
-        api_key=os.getenv("DEEPSEEK_API_KEY"),
-        base_url=os.getenv("DEEPSEEK_BASE_URL")
+        model_name="deepseek-chat",
+        openai_api_key=os.getenv("DEEPSEEK_API_KEY"),
+        openai_api_base=os.getenv("DEEPSEEK_BASE_URL")
     )
     prompt = ChatPromptTemplate.from_messages([
         ("system", f"你是专业儿童故事生成器，风格：{style}，情绪：{emotion}，心情：{mood}，字数控制在{word_num}字左右"),
@@ -109,6 +121,7 @@ def generate_story(keyword, style, emotion, word_num, mood):
         speak_text(result.content)
     st.rerun()
 
+# ===================== 页面渲染 =====================
 def create_story_page():
     st.title("📖 AI 故事创作平台")
     st.markdown("<p style='color:#666;margin-bottom:20px;'>✨ 一键生成治愈、励志、古风、科幻等精美短篇故事</p>", unsafe_allow_html=True)
