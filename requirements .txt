@@ -1,7 +1,0 @@
-streamlit
-openai》=1.0.0
-python-dotenv
-langchain
-langchain-openai
-reportlab
-pillow
