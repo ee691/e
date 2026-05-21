@@ -2,8 +2,7 @@ import streamlit as st
 import requests
 import base64
 import io
-from reportlab.lib.pagesizes import A4
-from reportlab.pdfgen import canvas
+
 from datetime import datetime
 
 # ===================== 【唯一修改】本地前后端分离后端地址 =====================
