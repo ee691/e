@@ -4,9 +4,9 @@ from datetime import datetime
 import hashlib
 import os
 import json
-from dotenv import load_dotenv
 import io
 import base64
+import requests
 try:
     from langchain_openai import ChatOpenAI
     from langchain_core.prompts import ChatPromptTemplate
@@ -19,7 +19,17 @@ except ImportError:
     StrOutputParser = None
 import time
 
-# 尝试导入 Pillow 用于图片压缩
+# ========================== 云端环境适配 ==========================
+# 检查是否在云端环境（通过环境变量判断）
+IS_CLOUD_ENV = os.getenv('STREAMLIT_SHARING_URL') is not None or os.getenv('VERCEL') is not None or os.getenv('RENDER') is not None
+
+# 尝试导入可选依赖
+try:
+    from dotenv import load_dotenv
+    DOTENV_AVAILABLE = True
+except ImportError:
+    DOTENV_AVAILABLE = False
+
 try:
     from PIL import Image
     PILLOW_AVAILABLE = True
@@ -27,10 +37,27 @@ except ImportError:
     PILLOW_AVAILABLE = False
     Image = None
 
-# 本地图片转 base64
-def get_base64(file):
-    with open(file, "rb") as f:
-        return base64.b64encode(f.read()).decode()
+# 图片转 base64（支持本地文件和远程 URL）
+def get_base64(source):
+    """
+    将图片转换为 base64 编码
+    :param source: 本地文件路径或远程图片 URL
+    :return: base64 编码字符串
+    """
+    try:
+        # 判断是否为 URL
+        if source.startswith('http://') or source.startswith('https://'):
+            # 远程图片：下载并转换
+            response = requests.get(source, timeout=10)
+            response.raise_for_status()
+            return base64.b64encode(response.content).decode()
+        else:
+            # 本地文件
+            with open(source, "rb") as f:
+                return base64.b64encode(f.read()).decode()
+    except Exception as e:
+        st.warning(f"无法加载图片 {source}: {str(e)}")
+        return ""
 
 # 图片压缩函数
 def compress_image(image_data, max_size_kb=100, quality=80, max_dimension=512):
@@ -101,8 +128,8 @@ bg3 = get_base64("1.2.png")
 bg4 = get_base64("1.3.png")
 
 
-# ========================== 配置文件路径（数据持久化） ==========================
-DATA_FILE = "app_data.json "
+# ========================== 数据持久化（云端适配） ==========================
+DATA_FILE = "app_data.json"
 
 def init_empty_data():
     return {
@@ -115,33 +142,55 @@ def init_empty_data():
     }
 
 def load_data():
-    if os.path.exists(DATA_FILE):
-        with open(DATA_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
-    return init_empty_data()
+    # 云端环境使用 session state，本地环境使用文件
+    if IS_CLOUD_ENV:
+        if "app_data" not in st.session_state:
+            st.session_state.app_data = init_empty_data()
+        return st.session_state.app_data
+    else:
+        if os.path.exists(DATA_FILE):
+            try:
+                with open(DATA_FILE, "r", encoding="utf-8") as f:
+                    return json.load(f)
+            except:
+                return init_empty_data()
+        return init_empty_data()
 
 def save_data(data):
-    with open(DATA_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
+    # 云端环境使用 session state，本地环境使用文件
+    if IS_CLOUD_ENV:
+        st.session_state.app_data = data
+    else:
+        try:
+            with open(DATA_FILE, "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+        except:
+            pass
 
 app_data = load_data()
 
-# ========================== 读取.env 密钥 ==========================
-dotenv_path = os.path.join(os.path.dirname(__file__), ".env")
-load_dotenv(dotenv_path)
-
+# ========================== 读取 API 密钥（云端适配） ==========================
+# 云端环境直接使用环境变量，本地环境使用 .env 文件
 API_KEY = os.getenv("DEEPSEEK_API_KEY")
 BASE_URL = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1")
+
+if not IS_CLOUD_ENV and DOTENV_AVAILABLE:
+    dotenv_path = os.path.join(os.path.dirname(__file__), ".env")
+    load_dotenv(dotenv_path)
+    API_KEY = os.getenv("DEEPSEEK_API_KEY")
+    BASE_URL = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1")
+
+if not API_KEY:
+    st.error("⚠️ 未读取到 API 密钥，请在环境变量中设置 DEEPSEEK_API_KEY")
+    st.info("本地开发：请在项目根目录创建 .env 文件，添加 DEEPSEEK_API_KEY=你的密钥")
+    st.info("云端部署：请在部署平台的环境变量中设置 DEEPSEEK_API_KEY")
+    st.stop()
 
 # LangSmith 监控配置（可选）
 os.environ["LANGCHAIN_TRACING_V2"] = os.getenv("LANGCHAIN_TRACING_V2", "false")
 os.environ["LANGCHAIN_ENDPOINT"] = "https://api.smith.langchain.com"
 os.environ["LANGCHAIN_API_KEY"] = os.getenv("LANGCHAIN_API_KEY", "")
 os.environ["LANGCHAIN_PROJECT"] = os.getenv("LANGCHAIN_PROJECT", "story-creator")
-
-if not API_KEY:
-    st.error("⚠️ 未读取到 API 密钥，请检查.env 文件")
-    st.stop()
 
 ai_client = OpenAI(api_key=API_KEY, base_url=BASE_URL)
 
