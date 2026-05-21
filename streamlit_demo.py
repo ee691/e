@@ -49,6 +49,15 @@ except ImportError:
     PILLOW_AVAILABLE = False
     Image = None
 
+try:
+    from reportlab.pdfgen import canvas
+    from reportlab.lib.pagesizes import A4
+    REPORTLAB_AVAILABLE = True
+except ImportError:
+    REPORTLAB_AVAILABLE = False
+    canvas = None
+    A4 = (612, 792)  # 默认 A4 尺寸
+
 # 图片转 base64（支持本地文件和远程 URL）
 def get_base64(source):
     """
@@ -737,6 +746,10 @@ def copy_text_btn(text):
 
 # 导出PDF
 def export_pdf(title, content):
+    if not REPORTLAB_AVAILABLE:
+        st.warning("⚠️ PDF 导出功能不可用，请安装 reportlab 库")
+        return None
+        
     buffer = io.BytesIO()
     c = canvas.Canvas(buffer, pagesize=A4)
     width, height = A4
