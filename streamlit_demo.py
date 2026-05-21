@@ -1,5 +1,4 @@
 import streamlit as st
-from openai import OpenAI
 from datetime import datetime
 import hashlib
 import os
@@ -7,6 +6,19 @@ import json
 import io
 import base64
 import requests
+
+# ========================== 核心依赖检查 ==========================
+try:
+    from openai import OpenAI
+    OPENAI_AVAILABLE = True
+except ImportError:
+    OPENAI_AVAILABLE = False
+    OpenAI = None
+    
+if not OPENAI_AVAILABLE:
+    st.error("⚠️ 缺少必要依赖：openai 库")
+    st.info("请安装依赖：pip install openai")
+    st.stop()
 try:
     from langchain_openai import ChatOpenAI
     from langchain_core.prompts import ChatPromptTemplate
