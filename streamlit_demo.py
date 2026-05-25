@@ -30,6 +30,7 @@ except ImportError:
     ChatPromptTemplate = None
     StrOutputParser = None
 import time
+import sqlite3
 
 # ========================== 云端环境适配 ==========================
 # 检查是否在云端环境（通过环境变量判断）
@@ -149,8 +150,84 @@ bg3 = get_base64("1.2.png")
 bg4 = get_base64("1.3.png")
 
 
-# ========================== 数据持久化（云端适配） ==========================
+# ========================== 数据持久化（云端适配 - SQLite） ==========================
 DATA_FILE = "app_data.json"
+DB_FILE = "story_app.db"
+
+def init_database():
+    """初始化 SQLite 数据库"""
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    
+    # 创建用户表
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS users (
+            username TEXT PRIMARY KEY,
+            password TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        )
+    ''')
+    
+    # 创建故事历史表
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS story_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT NOT NULL,
+            keyword TEXT NOT NULL,
+            style TEXT NOT NULL,
+            content TEXT NOT NULL,
+            time TEXT NOT NULL,
+            language TEXT,
+            image_url TEXT,
+            FOREIGN KEY (username) REFERENCES users(username)
+        )
+    ''')
+    
+    # 创建收藏表
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS favorites (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT NOT NULL,
+            story_id INTEGER NOT NULL,
+            FOREIGN KEY (username) REFERENCES users(username),
+            FOREIGN KEY (story_id) REFERENCES story_history(id)
+        )
+    ''')
+    
+    # 创建点赞表
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS likes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT NOT NULL,
+            story_time TEXT NOT NULL,
+            UNIQUE(username, story_time)
+        )
+    ''')
+    
+    # 创建每日计数表
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS daily_count (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT NOT NULL,
+            date TEXT NOT NULL,
+            count INTEGER DEFAULT 0,
+            UNIQUE(username, date)
+        )
+    ''')
+    
+    # 创建用户资料表
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS user_profiles (
+            username TEXT PRIMARY KEY,
+            nickname TEXT,
+            avatar TEXT,
+            bio TEXT,
+            FOREIGN KEY (username) REFERENCES users(username)
+        )
+    ''')
+    
+    conn.commit()
+    conn.close()
 
 def init_empty_data():
     return {
@@ -163,12 +240,68 @@ def init_empty_data():
     }
 
 def load_data():
-    # 云端环境使用 session state，本地环境使用文件
+    """加载数据：云端使用 SQLite，本地使用 JSON 文件"""
     if IS_CLOUD_ENV:
-        if "app_data" not in st.session_state:
-            st.session_state.app_data = init_empty_data()
-        return st.session_state.app_data
+        # 云端环境：从 SQLite 数据库加载
+        init_database()
+        conn = sqlite3.connect(DB_FILE)
+        cursor = conn.cursor()
+        
+        data = init_empty_data()
+        
+        # 加载用户
+        cursor.execute("SELECT username, password, created_at FROM users")
+        for row in cursor.fetchall():
+            data["users"][row[0]] = {"password": row[1], "created_at": row[2]}
+        
+        # 加载故事历史
+        cursor.execute("SELECT keyword, style, content, time, language, image_url, username FROM story_history ORDER BY id DESC")
+        for row in cursor.fetchall():
+            data["story_history"].append({
+                "keyword": row[0],
+                "style": row[1],
+                "content": row[2],
+                "time": row[3],
+                "language": row[4] if row[4] else "中文",
+                "image_url": row[5],
+                "username": row[6]
+            })
+        
+        # 加载收藏
+        cursor.execute("SELECT keyword, style, content, time, language, image_url FROM story_history WHERE id IN (SELECT story_id FROM favorites)")
+        for row in cursor.fetchall():
+            data["favorite_stories"].append({
+                "keyword": row[0],
+                "style": row[1],
+                "content": row[2],
+                "time": row[3],
+                "language": row[4] if row[4] else "中文",
+                "image_url": row[5]
+            })
+        
+        # 加载点赞
+        cursor.execute("SELECT story_time FROM likes")
+        data["story_likes"] = [row[0] for row in cursor.fetchall()]
+        
+        # 加载每日计数
+        cursor.execute("SELECT username, date, count FROM daily_count")
+        for row in cursor.fetchall():
+            key = f"{row[0]}_{row[1]}"
+            data["daily_count"][key] = row[2]
+        
+        # 加载用户资料
+        cursor.execute("SELECT username, nickname, avatar, bio FROM user_profiles")
+        for row in cursor.fetchall():
+            data["user_profiles"][row[0]] = {
+                "nickname": row[1],
+                "avatar": row[2],
+                "bio": row[3]
+            }
+        
+        conn.close()
+        return data
     else:
+        # 本地环境：使用 JSON 文件
         if os.path.exists(DATA_FILE):
             try:
                 with open(DATA_FILE, "r", encoding="utf-8") as f:
@@ -178,10 +311,67 @@ def load_data():
         return init_empty_data()
 
 def save_data(data):
-    # 云端环境使用 session state，本地环境使用文件
+    """保存数据：云端使用 SQLite，本地使用 JSON 文件"""
     if IS_CLOUD_ENV:
-        st.session_state.app_data = data
+        # 云端环境：保存到 SQLite 数据库
+        conn = sqlite3.connect(DB_FILE)
+        cursor = conn.cursor()
+        
+        # 保存用户
+        cursor.execute("DELETE FROM users")
+        for username, user_info in data["users"].items():
+            cursor.execute(
+                "INSERT INTO users (username, password, created_at) VALUES (?, ?, ?)",
+                (username, user_info["password"], user_info.get("created_at", datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+            )
+        
+        # 保存故事历史
+        cursor.execute("DELETE FROM story_history")
+        for story in data["story_history"]:
+            cursor.execute(
+                "INSERT INTO story_history (keyword, style, content, time, language, image_url, username) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (story["keyword"], story["style"], story["content"], story["time"], 
+                 story.get("language", "中文"), story.get("image_url"), story.get("username", ""))
+            )
+        
+        # 保存收藏
+        cursor.execute("DELETE FROM favorites")
+        for idx, story in enumerate(data["favorite_stories"]):
+            cursor.execute(
+                "INSERT INTO favorites (username, story_id) VALUES (?, ?)",
+                (story.get("username", ""), idx + 1)
+            )
+        
+        # 保存点赞
+        cursor.execute("DELETE FROM likes")
+        for story_time in data["story_likes"]:
+            cursor.execute(
+                "INSERT INTO likes (username, story_time) VALUES (?, ?)",
+                ("", story_time)
+            )
+        
+        # 保存每日计数
+        cursor.execute("DELETE FROM daily_count")
+        for key, count in data["daily_count"].items():
+            parts = key.split("_")
+            if len(parts) == 2:
+                cursor.execute(
+                    "INSERT INTO daily_count (username, date, count) VALUES (?, ?, ?)",
+                    (parts[0], parts[1], count)
+                )
+        
+        # 保存用户资料
+        cursor.execute("DELETE FROM user_profiles")
+        for username, profile in data["user_profiles"].items():
+            cursor.execute(
+                "INSERT INTO user_profiles (username, nickname, avatar, bio) VALUES (?, ?, ?, ?)",
+                (username, profile.get("nickname", ""), profile.get("avatar", ""), profile.get("bio", ""))
+            )
+        
+        conn.commit()
+        conn.close()
     else:
+        # 本地环境：保存到 JSON 文件
         try:
             with open(DATA_FILE, "w", encoding="utf-8") as f:
                 json.dump(data, f, ensure_ascii=False, indent=2)
